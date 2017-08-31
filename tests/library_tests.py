@@ -18,6 +18,14 @@ def test_multi_libraries():
         loaded_libraries.append(lib)
     assert len(loaded_libraries) == 4
 
+def test_no_range():
+
+    data = yaml.load(file('tests/data/3162.yaml'))
+    libraries = data['affected']
+    assert libraries[0] is not None
+    lib = JavaLibrary(libraries[0]['version'], libraries[0]['artifactId'], libraries[0]['groupId'])
+
+    print(lib.affectedMvnSeries)
 
 def testJettyShouldContainExpectedVersions():
     expectedVersions = ['9.2.4.v20141103', '9.2.5.v20141112', '9.2.6.v20141205', '9.2.7.v20150116']

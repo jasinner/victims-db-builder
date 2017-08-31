@@ -243,7 +243,7 @@ class JavaLibrary(BaseLibrary):
             self.logger.warn('either affected version range is unavailable')
 
         for version in self.affectedMvnSeries:
-            self.logger.debug(version.version)
+            self.logger.debug(version.version   )
 
     def populatedAffectedLibraries(self, attachedSuffix, comparableVersion):
         self.affectedMvnSeries.add(
