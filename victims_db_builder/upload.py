@@ -18,22 +18,16 @@ logging.config.fileConfig('logging.cfg')
 logger = logging.getLogger('victimsDBBuilder')
 
 
-def uploadArchive(username, password, filename, gid, aid, vid, cves):
+def uploadArchive(username, password, filename, cve):
     logger.info("uploading file: %s" % filename)
-    path = getPath(gid, aid, vid, cves)
+    path = getPath(cve)
     url = server + path
-    #date = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
     with open(filename, 'rb') as archive:
-        #md5sums = [md5(archive.read()).hexdigest()]
-        #archive.seek(0)
         files = { 'archive': archive }
-        response = requests.put(url,
-            #headers = {'X-Victims-Api': "%s:%s" % (apiKey, generate_signature(
-            #	secret, 'PUT', path, date, md5sums)),
-            #	"Date": date},
+        response = requests.post(url,
             files=files,
-            auth = (username, password),
-            verify='COMODO_DV_SHA-256_bundle.crt'
+            auth = (username, password)
+            #verify='COMODO_DV_SHA-256_bundle.crt'
        )
         logger.info(response.text)
 
@@ -41,14 +35,11 @@ def submit(username, password, gid, aid, vid, cves):
     path = getPath(gid, aid, vid, cves)
     url = server + path
     logger.info("Submitting to path: %s" % url)
-    response = requests.put(url,
+    response = requests.post(url,
         auth = (username, password),
         verify = 'COMODO_DV_SHA-256_bundle.crt'
     )
     logger.info(response.text)
 
-def getPath(gid, aid, vid, cves):
-    if not isinstance(cves, basestring):
-	cves = ','.join(cves)
-    return "/service/v2/submit/archive/java/?version=%s&groupId=%s&artifactId=%s&cves=%s" % (
-            vid, gid, aid, cves)
+def getPath(cve):
+    return "/upload/%s" % (cve)

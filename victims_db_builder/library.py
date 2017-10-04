@@ -32,10 +32,8 @@ class JavaLibrary(BaseLibrary):
         super(JavaLibrary, self).__init__(versionRange)
         self.groupId = groupId
         self.artifactId = artifactId
-        self.mavenVersions = set()
         self.affectedMvnSeries = set()
         self.configure()
-        self.findAllInSeries()
 
     def configure(self):
         config = ConfigParser.ConfigParser()
@@ -46,13 +44,13 @@ class JavaLibrary(BaseLibrary):
             try:
                 self.logger.debug('repo: %s' % repo)
                 self.indexBaseUrl = url
-                self.confirmVersions()
+                self.confirmVersions(url)
             except:
                 self.logger.warn('Processing of repo %s, skipping.' % repo)
                 continue
 
 
-    def confirmVersions(self):
+    def confirmVersions(self, repo):
         coords = self.indexBaseUrl + self.groupId.replace('.', '/') + "/" + self.artifactId
         self.logger.debug("coords %s", coords)
         try:
@@ -60,19 +58,20 @@ class JavaLibrary(BaseLibrary):
         except urllib2.URLError, e:
             if response.code is 404:
                 pass
-        self.findInMaven(response)
+        results = self.findInMaven(response)
+        self.findAllInSeries(results, repo)
 
     def findInMaven(self, response):
-
-        # TODO cache page locally for redundency
+        mavenVersions = set()
         mavenPage = response.read()
         soup = BeautifulSoup(mavenPage, 'html.parser')
         links = soup.find_all('a')
         for link in links:
-            self.mavenVersions.add(link.get_text().rstrip('/'))
+            mavenVersions.add(link.get_text().rstrip('/'))
+        return mavenVersions
 
 
-    def findAllInSeries(self):
+    def findAllInSeries(self, mavenVersions, repo):
         verList = []
         regex = ['(,)(\\d+)(\\.)(\\d+)', '(,)(\\d+)']
         for val in self.versionRanges:
@@ -128,7 +127,7 @@ class JavaLibrary(BaseLibrary):
                 versionRange.append(each.boundary)
                 finalVersionRanges.append(EqualBaseVersion(versionRange))
 
-        self.findAllArtifacts(finalVersionRanges)
+        self.findAllArtifacts(finalVersionRanges, mavenVersions, repo)
 
     # Building the relationship between affected versions in case any version
     # lives between two other versions without
@@ -194,15 +193,15 @@ class JavaLibrary(BaseLibrary):
             return matched.group(0)
 
 
-    def findAllArtifacts(self, translatedVersions):
+    def findAllArtifacts(self, translatedVersions, mavenVersions, repo):
         regex = '[0-9](\\.)'
 
-        if len(self.mavenVersions) == 0:
+        if len(mavenVersions) == 0:
             self.logger.warn('acquired maven artifacts is empty')
 
         if len(translatedVersions) != 0:
             for version in translatedVersions:
-                for mvn in self.mavenVersions:
+                for mvn in mavenVersions:
                     res = re.compile(regex)
                     matched = res.search(mvn)
                     if matched is None:
@@ -231,7 +230,7 @@ class JavaLibrary(BaseLibrary):
                     if version.boundary is not None and comparableVersion is not '':
                         # Case where boundary version is specified as one digit i.e 9
                         if '.' not in version.boundary and version.boundary == self.getBoundary(comparableVersion):
-                            self.compareVersions(attachedSuffix, comparableVersion, version)
+                            self.compareVersions(attachedSuffix, comparableVersion, version, repo)
 
                         # Case where boundary version is specified with decimal point i.e 9.2
                         if '.' in version.boundary and version.boundary == self.normalizeText(
@@ -250,11 +249,11 @@ class JavaLibrary(BaseLibrary):
                                                  version.lessThanOrEqualTo.replace('>=', '')) and
                                                       LooseVersion(comparableVersion) < LooseVersion(
                                                       version.greaterThanOrEqualTo.replace('<=', '')))):
-                                    self.populatedAffectedLibraries(attachedSuffix, comparableVersion)
-                            self.compareVersions(attachedSuffix, comparableVersion, version)
+                                    self.populatedAffectedLibraries(attachedSuffix, comparableVersion, repo)
+                            self.compareVersions(attachedSuffix, comparableVersion, version, repo)
 
                     elif comparableVersion is not '':
-                        self.compareVersions(attachedSuffix, comparableVersion, version)
+                        self.compareVersions(attachedSuffix, comparableVersion, version, repo)
         else:
             self.logger.warn('either affected version range is unavailable')
 
@@ -265,29 +264,29 @@ class JavaLibrary(BaseLibrary):
         matched = res.search(normalizedText)
         return matched.group(0)
 
-    def populatedAffectedLibraries(self, attachedSuffix, comparableVersion):
+    def populatedAffectedLibraries(self, attachedSuffix, comparableVersion, repo):
         self.affectedMvnSeries.add(
-            AffectedJavaLibrary(self.groupId, self.artifactId, str(comparableVersion + attachedSuffix)))
+            AffectedJavaLibrary(self.groupId, self.artifactId, str(comparableVersion + attachedSuffix), repo))
 
-    def compareVersions(self, attachedSuffix, comparableVersion, version):
+    def compareVersions(self, attachedSuffix, comparableVersion, version, repo):
         if version.equal is not None:
             if LooseVersion(version.equal.replace('==', '')) == LooseVersion(comparableVersion):
-                self.populatedAffectedLibraries(attachedSuffix, comparableVersion)
+                self.populatedAffectedLibraries(attachedSuffix, comparableVersion, repo)
         if version.greaterThanOrEqualTo is not None and version.lessThanOrEqualTo is None:
             if LooseVersion(comparableVersion) == LooseVersion(version.greaterThanOrEqualTo.replace('<=', '')) or \
                             LooseVersion(comparableVersion) < LooseVersion(
                         version.greaterThanOrEqualTo.replace('<=', '')):
-                self.populatedAffectedLibraries(attachedSuffix, comparableVersion)
+                self.populatedAffectedLibraries(attachedSuffix, comparableVersion, repo)
         if version.lessThanOrEqualTo is not None and version.greaterThanOrEqualTo is None:
             if LooseVersion(comparableVersion) == LooseVersion(version.lessThanOrEqualTo.replace('>=', '')) or \
                             LooseVersion(comparableVersion) > LooseVersion(version.lessThanOrEqualTo.replace('>=', '')):
-                self.populatedAffectedLibraries(attachedSuffix, comparableVersion)
+                self.populatedAffectedLibraries(attachedSuffix, comparableVersion, repo)
         if version.greaterThan is not None:
             if LooseVersion(comparableVersion) < LooseVersion(version.greaterThan.replace('<', '')):
-                self.populatedAffectedLibraries(attachedSuffix, comparableVersion)
+                self.populatedAffectedLibraries(attachedSuffix, comparableVersion, repo)
         if version.lessThan is not None:
             if LooseVersion(comparableVersion) > LooseVersion(version.lessThan.replace('>', '')):
-                self.populatedAffectedLibraries(attachedSuffix, comparableVersion)
+                self.populatedAffectedLibraries(attachedSuffix, comparableVersion, repo)
 
         # Case where an affected version is between two other versions
         if version.lessThan is not None and version.greaterThan is not None:
@@ -297,10 +296,11 @@ class JavaLibrary(BaseLibrary):
 
 
 class AffectedJavaLibrary:
-    def __init__(self, groupId, artifactId, version):
+    def __init__(self, groupId, artifactId, version, repo):
         self.groupId = groupId
         self.artifactId = artifactId
         self.version = version
+        self.repo = repo
 
 
 class EqualBaseVersion:
