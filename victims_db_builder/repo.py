@@ -14,7 +14,6 @@ javaPath = config.get('cve_db', 'javaPath')
 def main():
     try:
         repo = Repo(filePath)
-
     except exc.InvalidGitRepositoryError, e:
         repo = Repo.clone_from(repoUrl, filePath)
         #TODO fix submit to work with victims-upload
@@ -24,8 +23,9 @@ def main():
 
 
 def doUpdate(repo):
-    diff = repo.index.diff(repo.heads.master.commit)
-    print repo.heads.master.commit
+    currentCommit = repo.head.commit
+    repo.remotes.origin.pull()
+    diff = currentCommit.diff()
     for d in diff.iter_change_type('A'):
         if d.new_file:
             if javaPath in d.b_path:
